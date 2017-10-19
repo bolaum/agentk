@@ -1,1 +1,4 @@
-config
+colorlog
+paramiko
+pytest-sugar
+hexdump

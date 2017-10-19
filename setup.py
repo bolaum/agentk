@@ -10,6 +10,9 @@ setup(
     description='SSH agent for kkmip.',
     long_description='README.md',
     install_requires=[
-        "config",
+        'colorlog',
+        'paramiko',
+        'pytest-sugar',
+        'hexdump'
     ],
 )
