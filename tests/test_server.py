@@ -4,7 +4,13 @@ import paramiko
 logger = logging.getLogger(__name__)
 
 
-def test_server_connection(server):
+def test_server_connection(server, key):
     agent = paramiko.Agent()
-    agent.get_keys()
+    keys = agent.get_keys()
+
+    assert len(keys) == 1
+    assert keys[0].get_name() == 'ssh-rsa'
+
+    agent.close()
+
 
