@@ -1,3 +1,4 @@
+import base64
 from paramiko.message import Message
 
 
@@ -25,6 +26,13 @@ class KkmipKey(object):
         msg.add_string(self._rsa_exp)
         msg.add_string(self._rsa_mod)
         self._pub_key_bytes = msg.asbytes()
+
+    def get_openssh_pubkey_format(self):
+        return '%s %s %s' % (
+            'ssh-rsa',
+            base64.b64encode(self._pub_key_bytes).decode('ascii'),
+            self.get_comment()
+        )
 
 
 class KkmipInterface(object):

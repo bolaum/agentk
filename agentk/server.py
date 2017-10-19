@@ -3,6 +3,7 @@ import logging
 import os
 import socket
 import struct
+import textwrap
 import threading
 import time
 from paramiko.message import Message
@@ -152,6 +153,8 @@ class Server(threading.Thread):
         msg.add_int(len(kkmip_keys))
 
         for key in self._kkmip.get_keys():
+            for l in textwrap.wrap(key.get_openssh_pubkey_format(), width=58):
+                logger.debug(l)
             # add key in PEM format
             msg.add_string(key.get_pem_bytes())
             # add comment
