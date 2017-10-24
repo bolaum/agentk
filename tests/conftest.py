@@ -9,6 +9,7 @@ from time import sleep
 from agentk.server import Server
 from agentk import log
 from agentk.kkmip_interface import KkmipInterface, KkmipKey
+from agentk.utils import bigint_to_bytes
 
 log.setup('debug')
 
@@ -29,15 +30,18 @@ def rsa_pem_to_exp_mod(keydata):
 
         parts.append(data)
 
-    # logger.debug('Exponent:')
-    # for l in hexdump.hexdump(parts[1], result='generator'):
-    #     logger.debug(l)
-    #
-    # logger.debug('Modulus:')
-    # for l in hexdump.hexdump(parts[2], result='generator'):
-    #     logger.debug(l)
+    exp = int.from_bytes(parts[1], byteorder='big')
+    mod = int.from_bytes(parts[2], byteorder='big')
 
-    return parts[1], parts[2]
+    logger.debug('Exponent: %d', exp)
+    logger.debug('Modulus: %d', mod)
+
+    logger.debug('Modulus bit length: %d' % mod.bit_length())
+
+    logger.debug('Modulus byte length: %d' % len(bigint_to_bytes(mod, extra_bytes=1)))
+    logger.debug('Exponent byte length: %d' % len(bigint_to_bytes(exp)))
+
+    return exp, mod
 
 
 @fixture(scope='session')
@@ -59,7 +63,10 @@ def kkmip_stub(key):
 
     class KkmipInterfaceStub(KkmipInterface):
         def __init__(self):
-            self._keys = [KkmipKey(pubkey, 'testkey')]
+            self._keys = [KkmipKey(pubkey[0], pubkey[1], 'testkey')]
+
+        def get_keys(self):
+            return self._keys
 
     return KkmipInterfaceStub()
 
