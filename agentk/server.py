@@ -22,12 +22,11 @@ SSH_AGENTC_REQUEST_IDENTITIES = 11
 SSH_AGENT_IDENTITIES_ANSWER = 12
 SSH_AGENTC_SIGN_REQUEST = 13
 SSH_AGENT_SIGN_RESPONSE = 14
+SSH_AGENT_FAILURE = 5
 
 MSG_TYPES = {
     SSH_AGENTC_REQUEST_IDENTITIES: 'SSH_AGENTC_REQUEST_IDENTITIES',
-    SSH_AGENT_IDENTITIES_ANSWER: 'SSH_AGENT_IDENTITIES_ANSWER',
     SSH_AGENTC_SIGN_REQUEST: 'SSH_AGENTC_SIGN_REQUEST',
-    SSH_AGENT_SIGN_RESPONSE: 'SSH_AGENT_SIGN_RESPONSE',
 }
 
 
@@ -96,7 +95,14 @@ class Server(threading.Thread):
             for fd in events[0]:
                 try:
                     msg_type, msg = self._get_message()
+
+                    if not msg_type in MSG_TYPES:
+                        logger.warning('Unknown message received: %s', msg_type)
+                        self._send_failure()
+                        continue
+
                     logger.debug('Message received: %s', MSG_TYPES[msg_type])
+
                     for l in hexdump.hexdump(msg.asbytes(), result='generator'):
                         logger.debug(l)
 
@@ -216,4 +222,8 @@ class Server(threading.Thread):
         logger.debug('Key found: %s', hexlify(key.get_fingerprint()))
         return key.sign(data)
 
+    def _send_failure(self):
+        msg = Message()
+        msg.add_byte(byte_chr(SSH_AGENT_FAILURE))
+        self._send_reply(msg)
 
