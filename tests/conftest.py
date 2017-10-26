@@ -1,4 +1,5 @@
 import base64
+import codecs
 import hexdump
 import logging
 import os
@@ -10,6 +11,9 @@ from agentk.server import Server
 from agentk import log
 from agentk.kkmip_interface import KkmipInterface, KkmipKey
 from agentk.utils import bigint_to_bytes
+from pyasn1.codec.der.decoder import decode as der_decoder
+from pyasn1_modules.rfc2437 import RSAPrivateKey, RSAPublicKey
+from pyasn1_modules.rfc2459 import SubjectPublicKeyInfo
 
 log.setup('debug')
 
@@ -19,51 +23,31 @@ SOCK_FILE = 'agentk.sock'
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
-def rsa_pem_to_exp_mod(keydata):
-    parts = []
-    while keydata:
-        # read the length of the data
-        dlen = struct.unpack('>I', keydata[:4])[0]
-
-        # read in <length> bytes
-        data, keydata = keydata[4:dlen + 4], keydata[4 + dlen:]
-
-        parts.append(data)
-
-    exp = int.from_bytes(parts[1], byteorder='big')
-    mod = int.from_bytes(parts[2], byteorder='big')
-
-    logger.debug('Exponent: %d', exp)
-    logger.debug('Modulus: %d', mod)
-
-    logger.debug('Modulus bit length: %d' % mod.bit_length())
-
-    logger.debug('Modulus byte length: %d' % len(bigint_to_bytes(mod, extra_bytes=1)))
-    logger.debug('Exponent byte length: %d' % len(bigint_to_bytes(exp)))
-
-    return exp, mod
+@fixture(scope='session')
+def privkey_fn():
+    return os.path.join(DATA_DIR, 'testkey')
 
 
 @fixture(scope='session')
-def key():
-    with open(os.path.join(DATA_DIR, 'testkey.pub'), 'r') as f:
-        data = f.read().split(None)[1]
+def kkmip_stub(privkey_fn):
+    class KkmipKeyStub(KkmipKey):
+        def __init__(self, pubkey_der):
+            self._name = 'testkey'
+            self._pubkey_der = pubkey_der
+            self._pub_key_bytes = None
+            self._gen_pem()
 
-    pubkey = base64.b64decode(data)
+        def _fetch_material(self):
+            subject_public_key, rest_of_input = der_decoder(self._pubkey_der, asn1Spec=SubjectPublicKeyInfo())
+            bin = subject_public_key['subjectPublicKey'].asOctets()
+            public_key, rest_of_input = der_decoder(bin, asn1Spec=RSAPublicKey())
 
-    # with open(os.path.join(DATA_DIR, 'testkey'), 'r') as f:
-    #     privkey = f.read()
-
-    return rsa_pem_to_exp_mod(pubkey), None
-
-
-@fixture(scope='session')
-def kkmip_stub(key):
-    pubkey, privkey = key
+            return int(public_key['publicExponent']), int(public_key['modulus'])
 
     class KkmipInterfaceStub(KkmipInterface):
         def __init__(self):
-            self._keys = [KkmipKey(pubkey[0], pubkey[1], 'testkey')]
+            pubkey_der, _ = self._get_keys_der(privkey_fn)
+            self._keys = [KkmipKeyStub(pubkey_der)]
 
         def get_keys(self):
             return self._keys
@@ -85,3 +69,14 @@ def server(kkmip_stub):
     yield server
 
     server.close()
+
+
+@fixture(scope='session')
+def kkmip():
+    kk = KkmipInterface('kryptus.dyndns.biz', 49252,
+                        cert=('/home/bolaum/projs/desafiok/vhsm_12/user1.crt',
+                              '/home/bolaum/projs/desafiok/vhsm_12/user1.key'))
+
+
+    return kk
+

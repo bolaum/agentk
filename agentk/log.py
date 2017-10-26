@@ -19,6 +19,8 @@ class TimeFormatter(ColoredFormatter):
 
 
 def setup(level='info'):
+    logging.getLogger('sarge').setLevel(logging.ERROR)
+
     formatter = TimeFormatter(
         '%(green)s[%(adjustedTime)12.6f]%(reset)s '
         '%(blue)s%(name)16s:%(funcName)16s():%(lineno)3d:%(reset)s'

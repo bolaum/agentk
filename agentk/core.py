@@ -12,11 +12,13 @@ def agentk_main(args):
     logger.info('agentk starting...')
 
     logger.debug('connection to HSM...')
-    kkmip = KkmipInterface()
+    kkmip = KkmipInterface('kryptus.dyndns.biz', 49252,
+                           cert=('/home/bolaum/projs/desafiok/vhsm_12/user1.crt',
+                                 '/home/bolaum/projs/desafiok/vhsm_12/user1.key'))
 
 
     logger.debug('starting server...')
-    server = Server()
+    server = Server(kkmip)
     server.start()
 
     try:

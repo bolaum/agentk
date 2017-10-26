@@ -6,6 +6,8 @@ import struct
 import textwrap
 import threading
 import time
+from binascii import hexlify
+from hashlib import md5
 from paramiko.message import Message
 from paramiko.py3compat import byte_chr
 from paramiko.ssh_exception import SSHException
@@ -54,12 +56,22 @@ class Server(threading.Thread):
 
     def run(self):
         logger.debug('Running thread...')
-        try:
-            (self._conn, self._addr) = self._get_connection()
-            self._communicate()
-        except OSError as e:
-            if e.errno != 22:
-                logger.error(e)
+        self._bind_to_sock()
+        while True:
+            try:
+                (self._conn, self._addr) = self._get_connection()
+                self._communicate()
+            except OSError as e:
+                if e.errno != 22:
+                    logger.exception(e)
+                self.close()
+                break
+            except SSHException as e:
+                logger.debug(e)
+            except Exception as e:
+                logger.exception(e)
+                self.close()
+                break
 
     def close(self):
         logger.debug('Closing server thread...')
@@ -91,12 +103,16 @@ class Server(threading.Thread):
                     if msg_type == SSH_AGENTC_REQUEST_IDENTITIES:
                         self._send_identities()
                     elif msg_type == SSH_AGENTC_SIGN_REQUEST:
-                        raise NotImplemented
+                        logger.debug('SSH_AGENTC_SIGN_REQUEST')
+                        self._send_sign_data(msg)
 
                 except SSHException:
-                    self.close()
-                    break
+                    raise
             time.sleep(io_sleep)
+
+    def _bind_to_sock(self):
+        self._sock = sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(self._sock_file)
 
     def _get_connection(self):
         """
@@ -105,11 +121,9 @@ class Server(threading.Thread):
         May block!
         """
 
-        self._sock = sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            sock.bind(self._sock_file)
-            sock.listen(1)
-            (conn, addr) = sock.accept()
+            self._sock.listen(1)
+            (conn, addr) = self._sock.accept()
             logger.debug('Connection accepted.')
             return conn, addr
         except:
@@ -161,3 +175,45 @@ class Server(threading.Thread):
             msg.add_string(key.get_comment())
 
         self._send_reply(msg)
+
+    def _send_sign_data(self, msg):
+        logger.debug('Sending signed data...')
+        blob = msg.get_string()
+        data = msg.get_string()
+        flags = msg.get_int()
+
+        logger.debug('Key blob:')
+        for l in hexdump.hexdump(blob, result='generator'):
+            logger.debug(l)
+
+        # logger.debug('Data to be signed:')
+        # for l in hexdump.hexdump(data, result='generator'):
+        #     logger.debug(l)
+        #
+        logger.debug('Flags: %X', flags)
+
+        signed_data = self._sign_data(blob, data)
+
+        sign_blob = Message()
+        sign_blob.add_string('ssh-rsa')
+        sign_blob.add_string(signed_data)
+
+        msg = Message()
+        # add response byte
+        msg.add_byte(byte_chr(SSH_AGENT_SIGN_RESPONSE))
+        # add signed blob
+        msg.add_string(sign_blob.asbytes())
+
+        self._send_reply(msg)
+
+    def _sign_data(self, blob, data):
+        fingerprint = md5(blob).digest()
+
+        key = self._kkmip.get_cached_key_by_fingerprint(fingerprint)
+        if not key:
+            return None
+
+        logger.debug('Key found: %s', hexlify(key.get_fingerprint()))
+        return key.sign(data)
+
+

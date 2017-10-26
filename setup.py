@@ -13,6 +13,9 @@ setup(
         'colorlog',
         'paramiko',
         'pytest-sugar',
-        'hexdump'
+        'hexdump',
+        'sarge',
+        'pyasn1',
+        'pyasn1-modules'
     ],
 )
