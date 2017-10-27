@@ -1,0 +1,5 @@
+host: hsm.example.com
+port: 12345
+cert: /path/to/user.crt
+key: /path/to/user.key
+socket-file: /tmp/agentk.sock

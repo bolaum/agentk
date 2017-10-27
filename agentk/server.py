@@ -35,15 +35,7 @@ class Server(threading.Thread):
         threading.Thread.__init__(self, target=self.run)
 
         self._kkmip = kkmip_interace
-
-        # TODO: get this from config file or argument
-        self._sock_file = 'agentk.sock'
-
-        if sock_fn:
-            self._sock_file = sock_fn
-        elif 'SSH_AUTH_SOCK' in os.environ :
-            self._sock_file = os.environ['SSH_AUTH_SOCK']
-
+        self._sock_file = sock_fn
         self._sock = None
         self._conn = None
         self._addr = None
@@ -117,8 +109,9 @@ class Server(threading.Thread):
             time.sleep(io_sleep)
 
     def _bind_to_sock(self):
-        self._sock = sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.bind(self._sock_file)
+        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._sock.bind(self._sock_file)
+        logger.debug("socket file created: %s", self._sock_file)
 
     def _get_connection(self):
         """

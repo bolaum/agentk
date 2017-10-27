@@ -16,6 +16,7 @@ setup(
         'hexdump',
         'sarge',
         'pyasn1',
-        'pyasn1-modules'
+        'pyasn1-modules',
+        'configargparse'
     ],
 )
