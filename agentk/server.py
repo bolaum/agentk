@@ -18,15 +18,22 @@ logger = logging.getLogger(__name__)
 # Common IO/select/etc sleep period, in seconds
 io_sleep = 0.01
 
+SSH_AGENT_FAILURE = 5
+SSH_AGENT_SUCCESS = 6
 SSH_AGENTC_REQUEST_IDENTITIES = 11
 SSH_AGENT_IDENTITIES_ANSWER = 12
 SSH_AGENTC_SIGN_REQUEST = 13
 SSH_AGENT_SIGN_RESPONSE = 14
-SSH_AGENT_FAILURE = 5
+SSH_AGENTC_ADD_IDENTITY = 17
+SSH_AGENTC_REMOVE_IDENTITY = 18
+SSH_AGENTC_REMOVE_ALL_IDENTITIES = 19
 
 MSG_TYPES = {
     SSH_AGENTC_REQUEST_IDENTITIES: 'SSH_AGENTC_REQUEST_IDENTITIES',
     SSH_AGENTC_SIGN_REQUEST: 'SSH_AGENTC_SIGN_REQUEST',
+    SSH_AGENTC_ADD_IDENTITY: 'SSH_AGENTC_ADD_IDENTITY',
+    SSH_AGENTC_REMOVE_IDENTITY: 'SSH_AGENTC_REMOVE_IDENTITY',
+    SSH_AGENTC_REMOVE_ALL_IDENTITIES: 'SSH_AGENTC_REMOVE_ALL_IDENTITIES'
 }
 
 
@@ -88,6 +95,7 @@ class Server(threading.Thread):
                 try:
                     msg_type, msg = self._get_message()
 
+
                     if not msg_type in MSG_TYPES:
                         logger.warning('Unknown message received: %s', msg_type)
                         self._send_failure()
@@ -101,9 +109,13 @@ class Server(threading.Thread):
                     if msg_type == SSH_AGENTC_REQUEST_IDENTITIES:
                         self._send_identities()
                     elif msg_type == SSH_AGENTC_SIGN_REQUEST:
-                        logger.debug('SSH_AGENTC_SIGN_REQUEST')
                         self._send_sign_data(msg)
-
+                    elif msg_type == SSH_AGENTC_ADD_IDENTITY:
+                        self._add_key(msg)
+                    elif msg_type == SSH_AGENTC_REMOVE_IDENTITY:
+                        self._remove_key(msg)
+                    elif msg_type == SSH_AGENTC_REMOVE_ALL_IDENTITIES:
+                        self._remove_all_keys()
                 except SSHException:
                     raise
             time.sleep(io_sleep)
@@ -135,7 +147,13 @@ class Server(threading.Thread):
         return ord(msg.get_byte()), msg
 
     def _read_all(self, wanted):
-        result = self._conn.recv(wanted)
+        while True:
+            try:
+                result = self._conn.recv(wanted)
+                break
+            except BlockingIOError:
+                continue
+
         while len(result) < wanted:
             if len(result) == 0:
                 raise SSHException('lost client')
@@ -154,6 +172,16 @@ class Server(threading.Thread):
             logger.debug(l)
 
         self._conn.send(data)
+
+    def _send_failure(self):
+        msg = Message()
+        msg.add_byte(byte_chr(SSH_AGENT_FAILURE))
+        self._send_reply(msg)
+
+    def _send_success(self):
+        msg = Message()
+        msg.add_byte(byte_chr(SSH_AGENT_SUCCESS))
+        self._send_reply(msg)
 
     def _send_identities(self):
         msg = Message()
@@ -189,9 +217,14 @@ class Server(threading.Thread):
         # for l in hexdump.hexdump(data, result='generator'):
         #     logger.debug(l)
         #
-        logger.debug('Flags: %X', flags)
+
+        # logger.debug('Flags: %X', flags)
 
         signed_data = self._sign_data(blob, data)
+
+        if not signed_data:
+            self._send_failure()
+            return
 
         sign_blob = Message()
         sign_blob.add_string('ssh-rsa')
@@ -212,11 +245,50 @@ class Server(threading.Thread):
         if not key:
             return None
 
-        logger.debug('Key found: %s', hexlify(key.get_fingerprint()))
+        logger.debug('Key found: %s', hexlify(key.get_fingerprint()).decode('ascii'))
+
         return key.sign(data)
 
-    def _send_failure(self):
-        msg = Message()
-        msg.add_byte(byte_chr(SSH_AGENT_FAILURE))
-        self._send_reply(msg)
+    def _add_key(self, msg):
+        key_type = msg.get_string().decode('ascii')
 
+        if key_type != str('ssh-rsa'):
+            logger.error('Key type %s is not supported', key_type)
+            self._send_failure()
+            return
+
+        n = msg.get_mpint()
+        e = msg.get_mpint()
+        d = msg.get_mpint()
+        iqmp = msg.get_mpint()
+        p = msg.get_mpint()
+        q = msg.get_mpint()
+        comment = msg.get_string().decode('ascii')
+
+        try:
+            self._kkmip.import_key(n, e, d, p, q, comment)
+            self._send_success()
+        except:
+            self._send_failure()
+
+    def _remove_key(self, msg):
+        blob = msg.get_string()
+        fingerprint = md5(blob).digest()
+
+        logger.debug('Removing key %s...', hexlify(fingerprint).decode('ascii'))
+        for k in self._kkmip.get_keys():
+            logger.debug(hexlify(k.get_fingerprint()).decode('ascii'))
+        key = self._kkmip.get_cached_key_by_fingerprint(fingerprint)
+
+        if not key:
+            logger.error('Key not found.')
+            self._send_failure()
+            return
+
+        self._kkmip.destroy_key(key)
+        self._send_success()
+
+    def _remove_all_keys(self):
+        logger.debug('Removing all keys...')
+        self._kkmip.destroy_keys()
+        self._send_success()

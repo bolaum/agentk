@@ -3,12 +3,14 @@ import logging
 import socket
 from io import TextIOWrapper
 from kkmip import client, types, enums, ttv
+from kkmip.error import KmipError
 from pyasn1.codec.der.decoder import decode as der_decoder
 from pyasn1_modules.rfc2437 import RSAPrivateKey, RSAPublicKey
 from pyasn1_modules.rfc2459 import SubjectPublicKeyInfo
 from sarge import Capture, run
 
 from agentk.kkmip_key import KkmipKey
+from agentk.kkmip_payloads import RegisterRSAPrivateKey, RegisterRSAPublicKey
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,33 @@ class KkmipInterface(object):
         pubkey_id = self.import_pubkey(pubkey_der, name, privkey_id)
 
         return pubkey_id, privkey_id
+
+    def import_key(self, n, e, d, p, q, comment):
+        logger.debug('Key comment: %s', comment)
+
+        payload = RegisterRSAPrivateKey(n, e, d, p, q, comment)
+
+        try:
+            r = self.send_payload(payload)
+            privkey_uid = r.unique_identifier
+            logger.debug('New private key uid: %s', privkey_uid)
+        except KmipError as e:
+            logger.error('Kmip: %s', e.result_message)
+            raise
+
+        payload = RegisterRSAPublicKey(n, e, privkey_uid, comment)
+
+        try:
+            r = self.send_payload(payload)
+            pubkey_uid = r.unique_identifier
+            logger.debug('New public key uid: %s', pubkey_uid)
+        except KmipError as e:
+            r = self.send_payload(types.DestroyRequestPayload(privkey_uid))
+            logger.debug('Destroy result: %s', r)
+            logger.error('Kmip: %s', e.result_message)
+            raise
+
+        # self.get_key(pubkey_uid).activate()
 
     def import_pubkey(self, pubkey_der, name, privkey_id):
         subject_public_key, rest_of_input = der_decoder(pubkey_der, asn1Spec=SubjectPublicKeyInfo())
@@ -167,6 +196,11 @@ class KkmipInterface(object):
     def destroy_keys(self):
         for k in self.get_keys():
             k.destroy()
+
+    def destroy_key(self, k):
+        if k in self._keys:
+            self._keys.remove(k)
+        k.destroy()
 
     def close(self):
         pass

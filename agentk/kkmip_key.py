@@ -3,6 +3,7 @@ import hexdump
 import logging
 from hashlib import md5
 from kkmip import types, enums
+from kkmip.error import KmipError
 from paramiko.message import Message
 
 from agentk.utils import bigint_to_bytes
@@ -19,6 +20,7 @@ class KkmipKey(object):
 
         self._name = attrs['name']
         self._link = attrs['link']
+        self._state = attrs['state']
 
         self._pub_key_bytes = None
         self._gen_pem()
@@ -33,8 +35,11 @@ class KkmipKey(object):
         return md5(self.get_pem_bytes()).digest()
 
     def activate(self):
-        # TODO: this!
-        self.send_payload(types.ActivateRequestPayload(r.unique_identifier))
+        logger.debug('Activating public key...')
+        self._kkmip.send_payload(types.ActivateRequestPayload(self._uid))
+        if self._link:
+            logger.debug('Activating private key...')
+            self._kkmip.send_payload(types.ActivateRequestPayload(self._link))
 
     def revoke(self):
         # revoke public and private keys
@@ -73,7 +78,8 @@ class KkmipKey(object):
             logger.debug(l)
 
         # make sure key is activated before signing
-        self.
+        if self._state != enums.State.Active:
+            self.activate()
 
         payload = types.SignRequestPayload(
             unique_identifier=self._link,
@@ -83,7 +89,12 @@ class KkmipKey(object):
                 padding_method=enums.PaddingMethod.PKCS1V1_5,
             )
         )
-        r = self._kkmip.send_payload(payload)
+        try:
+            r = self._kkmip.send_payload(payload)
+        except KmipError as e:
+            logger.error('Kmip: %s', e.result_message)
+            return None
+
 
         data = r.signature_data
         logger.debug('Signed data (%d bytes):', len(data ))
@@ -110,12 +121,13 @@ class KkmipKey(object):
     def _fetch_attributes(self):
         attrs = {
             'name': None,
-            'link': None
+            'link': None,
+            'state': None
         }
 
         payload = types.GetAttributesRequestPayload(
             unique_identifier=self._uid,
-            attribute_name_list=['Name', 'Link']
+            attribute_name_list=['Name', 'Link', 'State']
         )
         r = self._kkmip.send_payload(payload)
 
@@ -126,6 +138,10 @@ class KkmipKey(object):
             if len(r.attribute_list) > 1:
                 logger.debug('Link: %s', r.attribute_list[1].attribute_value.linked_object_identifier)
                 attrs['link'] = r.attribute_list[1].attribute_value.linked_object_identifier
+
+            if len(r.attribute_list) > 2:
+                logger.debug('State: %s', r.attribute_list[2].attribute_value)
+                attrs['state'] = r.attribute_list[2].attribute_value
 
         return attrs
 
