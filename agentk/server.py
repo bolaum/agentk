@@ -95,8 +95,7 @@ class Server(threading.Thread):
                 try:
                     msg_type, msg = self._get_message()
 
-
-                    if not msg_type in MSG_TYPES:
+                    if msg_type not in MSG_TYPES:
                         logger.warning('Unknown message received: %s', msg_type)
                         self._send_failure()
                         continue
@@ -126,12 +125,6 @@ class Server(threading.Thread):
         logger.debug("socket file created: %s", self._sock_file)
 
     def _get_connection(self):
-        """
-        Return a pair of socket object and string address.
-
-        May block!
-        """
-
         try:
             self._sock.listen(1)
             (conn, addr) = self._sock.accept()
@@ -193,7 +186,7 @@ class Server(threading.Thread):
         # add number of keys
         msg.add_int(len(kkmip_keys))
 
-        for key in self._kkmip.get_keys():
+        for key in kkmip_keys:
             for l in textwrap.wrap(key.get_openssh_pubkey_format(), width=58):
                 logger.debug(l)
             # add key in PEM format

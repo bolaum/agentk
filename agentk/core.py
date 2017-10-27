@@ -27,14 +27,13 @@ def agentk_main(options):
 
     kkmip = KkmipInterface(options.host, options.port, cert=(options.cert, options.key))
 
-    logger.debug('trying to ping HSM...')
     try:
         kkmip.ping_hsm()
     except Exception as e:
         logger.error('Error pinging HSM: %s', e)
         exit(1)
 
-    logger.debug('starting server...')
+    logger.info('Starting server...')
     server = Server(kkmip, sock_fn=options.socket_file)
 
     server.start()
@@ -42,7 +41,7 @@ def agentk_main(options):
     print('SSH_AUTH_SOCK=%s; export SSH_AUTH_SOCK;' % options.socket_file)
 
     try:
-        logger.debug('joining server...')
+        logger.debug('Joining server...')
         server.join()
     except KeyboardInterrupt:
         server.close()

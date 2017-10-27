@@ -1,12 +1,14 @@
 import base64
 import hexdump
 import logging
+from binascii import hexlify
 from hashlib import md5
 from kkmip import types, enums
 from kkmip.error import KmipError
 from paramiko.message import Message
 
 from agentk.utils import bigint_to_bytes
+from agentk.kkmip_payloads import *
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ class KkmipKey(object):
         self._pub_key_bytes = None
         self._gen_pem()
 
+        self._fp = hexlify(self.get_fingerprint()).decode('ascii')
+
     def get_comment(self):
         return self._name
 
@@ -35,44 +39,33 @@ class KkmipKey(object):
         return md5(self.get_pem_bytes()).digest()
 
     def activate(self):
-        logger.debug('Activating public key...')
+        logger.info('Activating public key %s...', self._uid)
         self._kkmip.send_payload(types.ActivateRequestPayload(self._uid))
+
         if self._link:
-            logger.debug('Activating private key...')
+            logger.info('Activating private key %s...', self._link)
             self._kkmip.send_payload(types.ActivateRequestPayload(self._link))
 
     def revoke(self):
-        # revoke public and private keys
-        uids = [self._uid]
+        logger.info('Revoking public key %s...', self._uid)
+        self._kkmip.send_payload(RevokeKey(self._uid))
 
         if self._link:
-            uids.append(self._link)
-
-        for uid in uids:
-            payload = types.RevokeRequestPayload(
-                unique_identifier=uid,
-                revocation_reason=types.RevocationReason(
-                    revocation_reason_code=enums.RevocationReasonCode.CessationOfOperation
-                ),
-            )
-            r = self._kkmip.send_payload(payload)
-            logger.debug('Revoke result: %s', r)
+            logger.info('Revoking private key %s...', self._link)
+            self._kkmip.send_payload(RevokeKey(self._link))
 
     def destroy(self):
         self.revoke()
 
-        # revoke public and private keys
-        uids = [self._uid]
+        logger.info('Destroying public key %s...', self._uid)
+        self._kkmip.send_payload(types.DestroyRequestPayload(self._uid))
 
         if self._link:
-            uids.append(self._link)
-
-        for uid in uids:
-            payload = types.DestroyRequestPayload(uid)
-            r = self._kkmip.send_payload(payload)
-            logger.debug('Destroy result: %s', r)
+            logger.info('Destroying private key %s...', self._link)
+            self._kkmip.send_payload(types.DestroyRequestPayload(self._link))
 
     def sign(self, data):
+        logger.info('Signing data...')
         logger.debug('Data to sign:')
         for l in hexdump.hexdump(data, result='generator'):
             logger.debug(l)
@@ -81,20 +74,12 @@ class KkmipKey(object):
         if self._state != enums.State.Active:
             self.activate()
 
-        payload = types.SignRequestPayload(
-            unique_identifier=self._link,
-            data=data,
-            cryptographic_parameters=types.CryptographicParameters(
-                hashing_algorithm=enums.HashingAlgorithm.SHA_1,
-                padding_method=enums.PaddingMethod.PKCS1V1_5,
-            )
-        )
+        payload = SignSHA1PKCS1(self._link, data)
         try:
             r = self._kkmip.send_payload(payload)
         except KmipError as e:
             logger.error('Kmip: %s', e.result_message)
             return None
-
 
         data = r.signature_data
         logger.debug('Signed data (%d bytes):', len(data ))
@@ -125,10 +110,7 @@ class KkmipKey(object):
             'state': None
         }
 
-        payload = types.GetAttributesRequestPayload(
-            unique_identifier=self._uid,
-            attribute_name_list=['Name', 'Link', 'State']
-        )
+        payload = GetAttributes(self._uid, ['Name', 'Link', 'State'])
         r = self._kkmip.send_payload(payload)
 
         if r.attribute_list:

@@ -2,7 +2,7 @@ import codecs
 import logging
 import socket
 from io import TextIOWrapper
-from kkmip import client, types, enums, ttv
+from kkmip import client
 from kkmip.error import KmipError
 from pyasn1.codec.der.decoder import decode as der_decoder
 from pyasn1_modules.rfc2437 import RSAPrivateKey, RSAPublicKey
@@ -10,7 +10,7 @@ from pyasn1_modules.rfc2459 import SubjectPublicKeyInfo
 from sarge import Capture, run
 
 from agentk.kkmip_key import KkmipKey
-from agentk.kkmip_payloads import RegisterRSAPrivateKey, RegisterRSAPublicKey
+from agentk.kkmip_payloads import *
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,13 @@ class KkmipInterface(object):
             cert=self._cert)
 
     def ping_hsm(self):
-        payload = types.QueryRequestPayload(
-            query_function_list=[
-                enums.QueryFunction.QueryServerInformation
-            ]
-        )
+        logger.info('Trying to ping HSM...')
+        payload = QueryServerInformation()
         r = self.send_payload(payload)
         logger.debug('Vendor ID: %s', r.vendor_identification)
 
     def get_keys(self):
+        logger.info('Getting HSM keys...')
         self._keys = []
         for id in self._fetch_all_key_ids():
             self._keys.append(KkmipKey(self, id))
@@ -66,8 +64,7 @@ class KkmipInterface(object):
         return pubkey_id, privkey_id
 
     def import_key(self, n, e, d, p, q, comment):
-        logger.debug('Key comment: %s', comment)
-
+        logger.info('Importing keys to HSM...')
         payload = RegisterRSAPrivateKey(n, e, d, p, q, comment)
 
         try:
@@ -90,8 +87,9 @@ class KkmipInterface(object):
             logger.error('Kmip: %s', e.result_message)
             raise
 
-        # self.get_key(pubkey_uid).activate()
+        self.get_key(pubkey_uid).activate()
 
+    # Leaving this for future reference
     def import_pubkey(self, pubkey_der, name, privkey_id):
         subject_public_key, rest_of_input = der_decoder(pubkey_der, asn1Spec=SubjectPublicKeyInfo())
         bin = subject_public_key['subjectPublicKey'].asOctets()
@@ -145,6 +143,7 @@ class KkmipInterface(object):
         logger.debug('Imported public key id: %s', r.unique_identifier)
         return r.unique_identifier
 
+    # Leaving this for future reference
     def import_privkey(self, privkey_der, name):
         private_key, rest_of_input = der_decoder(privkey_der, asn1Spec=RSAPrivateKey())
         length = int(private_key['modulus']).bit_length()
@@ -216,18 +215,7 @@ class KkmipInterface(object):
         return r
 
     def _fetch_all_key_ids(self):
-        payload = types.LocateRequestPayload(
-            attribute_list=[
-                types.Attribute(
-                    attribute_name=enums.Tag.ObjectType,
-                    attribute_value=enums.ObjectType.PublicKey,
-                ),
-                types.Attribute(
-                    attribute_name=enums.Tag.CryptographicAlgorithm,
-                    attribute_value=enums.CryptographicAlgorithm.RSA,
-                ),
-            ],
-        )
+        payload = LocateRSAPublicKeys()
         r = self.send_payload(payload)
         logger.debug('Fetch result: %s', r)
 
@@ -236,6 +224,7 @@ class KkmipInterface(object):
 
         return r.unique_identifier_list
 
+    # Leaving this for future reference
     def _get_keys_der(self, privkey_fn):
         # generate public key in pkcs1 format
         with Capture() as out:

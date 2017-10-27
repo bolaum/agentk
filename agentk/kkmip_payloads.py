@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 def RegisterRSAPrivateKey(n, e, d, p, q, name):
     length = int(n).bit_length()
-    logger.debug('Detected length: %d', length)
+    logger.debug('RegisterRSAPrivateKey: Detected length: %d', length)
 
     return types.RegisterRequestPayload(
         object_type=enums.ObjectType.PrivateKey,
@@ -47,7 +47,7 @@ def RegisterRSAPrivateKey(n, e, d, p, q, name):
 
 def RegisterRSAPublicKey(n, e, privkey_uid, name):
     length = int(n).bit_length()
-    logger.debug('Detected length: %d', length)
+    logger.debug('RegisterRSAPublicKey: Detected length: %d', length)
 
     return types.RegisterRequestPayload(
         object_type=enums.ObjectType.PublicKey,
@@ -87,4 +87,54 @@ def RegisterRSAPublicKey(n, e, privkey_uid, name):
                 cryptographic_length=length,
             )
         )
+    )
+
+
+def QueryServerInformation():
+    return types.QueryRequestPayload(
+        query_function_list=[
+            enums.QueryFunction.QueryServerInformation
+        ]
+    )
+
+
+def LocateRSAPublicKeys():
+    return types.LocateRequestPayload(
+        attribute_list=[
+            types.Attribute(
+                attribute_name=enums.Tag.ObjectType,
+                attribute_value=enums.ObjectType.PublicKey,
+            ),
+            types.Attribute(
+                attribute_name=enums.Tag.CryptographicAlgorithm,
+                attribute_value=enums.CryptographicAlgorithm.RSA,
+            ),
+        ],
+    )
+
+
+def RevokeKey(uid):
+    return types.RevokeRequestPayload(
+        unique_identifier=uid,
+        revocation_reason=types.RevocationReason(
+            revocation_reason_code=enums.RevocationReasonCode.CessationOfOperation
+        ),
+    )
+
+
+def SignSHA1PKCS1(uid, data):
+    return types.SignRequestPayload(
+        unique_identifier=uid,
+        data=data,
+        cryptographic_parameters=types.CryptographicParameters(
+            hashing_algorithm=enums.HashingAlgorithm.SHA_1,
+            padding_method=enums.PaddingMethod.PKCS1V1_5,
+        )
+    )
+
+
+def GetAttributes(uid, attributes):
+    return types.GetAttributesRequestPayload(
+        unique_identifier=uid,
+        attribute_name_list=attributes
     )
