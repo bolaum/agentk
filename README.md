@@ -1,6 +1,6 @@
 # agentk
 
-`agentk` implements the [ssh-agent protocol](https://tools.ietf.org/html/draft-miller-ssh-agent-00) and allows access to keys within a kNET-HSM. It uses the `kkmip` library provided by [Kryptus](www.kryptus.com). `agentk` implements a subset of the functionalities provided by OpenSSH's `ssh-agent`.
+`agentk` implements the [ssh-agent protocol](https://tools.ietf.org/html/draft-miller-ssh-agent-00) and allows access to keys within a kNET-HSM. It uses the `kkmip` library provided by [Kryptus](www.kryptus.com) as a backend for communication with kNET-HSM and supports a subset of the functionalities provided by OpenSSH's `ssh-agent`, as listed below.
 
 ## Features
 
