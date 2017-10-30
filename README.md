@@ -107,6 +107,6 @@ ssh localhost
 
 ## Why?
 
-Well, mainly for fun and profit. I supposed tens of millions of people use `ssh` everyday, so it's a good thing that kNET-HSM is now integrated with almost every client ever written for unix like systems =D 
+Well, mainly for fun and profit. I suppose tens of millions of people use `ssh` everyday, so it's a good thing that kNET-HSM is now integrated with almost every client ever written for unix like systems =D 
 
 
