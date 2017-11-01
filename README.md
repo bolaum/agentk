@@ -104,6 +104,7 @@ ssh localhost
 - Windows support
 - Fix tests
 - Test on other unix like systems (FreeBSD, OpenBSD, etc.)
+- Improve documentation A LOT!
 
 ## Why?
 
